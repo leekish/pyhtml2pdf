@@ -13,38 +13,11 @@ from selenium.webdriver.common.by import By
 from .compressor import __compress
 
 
-def convert(source: str, target: str, timeout: int = 2, compress: bool = False, power: int = 0, install_driver: bool = True):
+def init_driver(install_driver: bool = True):
     '''
-    Convert a given html file or website into PDF
+    Init default driver
+    '''
 
-    :param str source: source html file or website link
-    :param str target: target location to save the PDF
-    :param int timeout: timeout in seconds. Default value is set to 2 seconds
-    :param bool compress: whether PDF is compressed or not. Default value is False
-    :param int power: power of the compression. Default value is 0. This can be 0: default, 1: prepress, 2: printer, 3: ebook, 4: screen
-   '''
-
-    result = __get_pdf_from_html(source, timeout, install_driver)
-
-    if compress:
-        __compress(result, target, power)
-    else:
-        with open(target, 'wb') as file:
-            file.write(result)
-
-def __send_devtools(driver, cmd, params={}):
-    resource = "/session/%s/chromium/send_command_and_get_result" % driver.session_id
-    url = driver.command_executor._url + resource
-    body = json.dumps({'cmd': cmd, 'params': params})
-    response = driver.command_executor._request('POST', url, body)
-
-    if not response:
-        raise Exception(response.get('value'))
-
-    return response.get('value')
-
-
-def __get_pdf_from_html(path: str, timeout: int, install_driver: bool, print_options={}):
     webdriver_options = Options()
     webdriver_prefs = {}
     driver = None
@@ -58,14 +31,64 @@ def __get_pdf_from_html(path: str, timeout: int, install_driver: bool, print_opt
     webdriver_prefs['profile.default_content_settings'] = {'images': 2}
 
     if install_driver:
-        driver = webdriver.Chrome(ChromeDriverManager().install(), options=webdriver_options)
+        driver = webdriver.Chrome(ChromeDriverManager().install(),
+                                  options=webdriver_options)
     else:
         driver = webdriver.Chrome(options=webdriver_options)
+
+    return driver
+
+
+def convert(driver,
+            source: str,
+            target: str,
+            timeout: int = 2,
+            compress: bool = False,
+            power: int = 0):
+    '''
+    Convert a given html file or website into PDF
+
+    :param driver: preinitialized driver
+    :param str source: source html file or website link
+    :param str target: target location to save the PDF
+    :param int timeout: timeout in seconds. Default value is set to 2 seconds
+    :param bool compress: whether PDF is compressed or not. Default value is False
+    :param int power: power of the compression. Default value is 0. This can be 0: default, 1: prepress, 2: printer, 3: ebook, 4: screen
+    '''
+
+    result = __get_pdf_from_html(driver, source, timeout)
+
+    if compress:
+        __compress(result, target, power)
+    else:
+        with open(target, 'wb') as file:
+            file.write(result)
+
+
+def __send_devtools(driver, cmd, params={}):
+    resource = "/session/%s/chromium/send_command_and_get_result" % driver.session_id
+    url = driver.command_executor._url + resource
+    body = json.dumps({'cmd': cmd, 'params': params})
+    response = driver.command_executor._request('POST', url, body)
+
+    if not response:
+        raise Exception(response.get('value'))
+
+    return response.get('value')
+
+
+def __get_pdf_from_html(
+    driver,
+    path: str,
+    timeout: int,
+    print_options={},
+):
 
     driver.get(path)
 
     try:
-       WebDriverWait(driver, timeout).until(staleness_of(driver.find_element(by=By.TAG_NAME, value='html')))
+        WebDriverWait(driver, timeout).until(
+            staleness_of(driver.find_element(by=By.TAG_NAME, value='html')))
     except TimeoutException:
         calculated_print_options = {
             'landscape': False,
@@ -74,6 +97,7 @@ def __get_pdf_from_html(path: str, timeout: int, install_driver: bool, print_opt
             'preferCSSPageSize': True,
         }
         calculated_print_options.update(print_options)
-        result = __send_devtools(driver, "Page.printToPDF", calculated_print_options)
+        result = __send_devtools(driver, "Page.printToPDF",
+                                 calculated_print_options)
         driver.quit()
         return base64.b64decode(result['data'])
